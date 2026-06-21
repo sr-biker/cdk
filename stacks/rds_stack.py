@@ -3,7 +3,9 @@ from aws_cdk import (
     Duration,
     RemovalPolicy,
     aws_ec2 as ec2,
+    aws_iam as iam,
     aws_rds as rds,
+    aws_scheduler as scheduler,
     aws_secretsmanager as secretsmanager,
 )
 from constructs import Construct
@@ -97,5 +99,49 @@ class RdsStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,
             publicly_accessible=False,
             enable_performance_insights=False,
-            monitoring_interval=Duration.seconds(15),
+            monitoring_interval=Duration.seconds(0),
+        )
+
+        db_arn = f"arn:aws:rds:{self.region}:{self.account}:db:{self.db_instance.instance_identifier}"
+
+        scheduler_role = iam.Role(
+            self,
+            "RdsSchedulerRole",
+            assumed_by=iam.ServicePrincipal("scheduler.amazonaws.com"),
+            inline_policies={
+                "StopStartRds": iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            actions=["rds:StopDBInstance", "rds:StartDBInstance"],
+                            resources=[db_arn],
+                        )
+                    ]
+                )
+            },
+        )
+
+        # Stop at 11 PM ET (04:00 UTC) on weekdays
+        scheduler.CfnSchedule(
+            self,
+            "StopRds",
+            schedule_expression="cron(0 4 ? * TUE-SAT *)",
+            flexible_time_window=scheduler.CfnSchedule.FlexibleTimeWindowProperty(mode="OFF"),
+            target=scheduler.CfnSchedule.TargetProperty(
+                arn="arn:aws:scheduler:::aws-sdk:rds:stopDBInstance",
+                role_arn=scheduler_role.role_arn,
+                input=f'{{"DbInstanceIdentifier":"{self.db_instance.instance_identifier}"}}',
+            ),
+        )
+
+        # Start at 8 AM ET (13:00 UTC) on weekdays
+        scheduler.CfnSchedule(
+            self,
+            "StartRds",
+            schedule_expression="cron(0 13 ? * MON-FRI *)",
+            flexible_time_window=scheduler.CfnSchedule.FlexibleTimeWindowProperty(mode="OFF"),
+            target=scheduler.CfnSchedule.TargetProperty(
+                arn="arn:aws:scheduler:::aws-sdk:rds:startDBInstance",
+                role_arn=scheduler_role.role_arn,
+                input=f'{{"DbInstanceIdentifier":"{self.db_instance.instance_identifier}"}}',
+            ),
         )
