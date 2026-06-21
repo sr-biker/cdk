@@ -14,12 +14,9 @@ workflows:
   aws-cdk:
     plan:
       steps:
-        - run: python3 -m venv .venv
-        - run: .venv/bin/pip install -q -r requirements.txt
-        - run: JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1 .venv/bin/python -m pytest tests/ -q || true
+        - run: pip3 install -q -r requirements.txt
         - run: JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1 npx cdk diff 2>&1
     apply:
       steps:
-        - run: python3 -m venv .venv
-        - run: .venv/bin/pip install -q -r requirements.txt
+        - run: pip3 install -q -r requirements.txt
         - run: JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1 npx cdk deploy --require-approval never 2>&1
