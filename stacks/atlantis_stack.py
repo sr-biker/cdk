@@ -5,6 +5,7 @@ from aws_cdk import (
     aws_ec2 as ec2,
     aws_iam as iam,
     aws_secretsmanager as secretsmanager,
+    aws_scheduler as scheduler,
 )
 from constructs import Construct
 
@@ -108,7 +109,7 @@ class AtlantisStack(Stack):
         instance = ec2.Instance(
             self,
             "AtlantisInstance",
-            instance_type=ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.SMALL),
+            instance_type=ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
             machine_image=ec2.AmazonLinuxImage(
                 generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2023,
             ),
@@ -122,6 +123,49 @@ class AtlantisStack(Stack):
 
         # Elastic IP so the webhook URL stays stable across reboots
         eip = ec2.CfnEIP(self, "AtlantisEip", instance_id=instance.instance_id)
+
+        # IAM role for EventBridge Scheduler to stop/start the EC2 instance
+        scheduler_role = iam.Role(
+            self,
+            "SchedulerRole",
+            assumed_by=iam.ServicePrincipal("scheduler.amazonaws.com"),
+            inline_policies={
+                "StopStartEc2": iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            actions=["ec2:StopInstances", "ec2:StartInstances"],
+                            resources=[f"arn:aws:ec2:{self.region}:{self.account}:instance/{instance.instance_id}"],
+                        )
+                    ]
+                )
+            },
+        )
+
+        # Stop at 6 PM ET (23:00 UTC) on weekdays
+        scheduler.CfnSchedule(
+            self,
+            "StopAtlantis",
+            schedule_expression="cron(0 23 ? * MON-FRI *)",
+            flexible_time_window=scheduler.CfnSchedule.FlexibleTimeWindowProperty(mode="OFF"),
+            target=scheduler.CfnSchedule.TargetProperty(
+                arn="arn:aws:scheduler:::aws-sdk:ec2:stopInstances",
+                role_arn=scheduler_role.role_arn,
+                input=f'{{"InstanceIds":["{instance.instance_id}"]}}',
+            ),
+        )
+
+        # Start at 8 AM ET (13:00 UTC) on weekdays
+        scheduler.CfnSchedule(
+            self,
+            "StartAtlantis",
+            schedule_expression="cron(0 13 ? * MON-FRI *)",
+            flexible_time_window=scheduler.CfnSchedule.FlexibleTimeWindowProperty(mode="OFF"),
+            target=scheduler.CfnSchedule.TargetProperty(
+                arn="arn:aws:scheduler:::aws-sdk:ec2:startInstances",
+                role_arn=scheduler_role.role_arn,
+                input=f'{{"InstanceIds":["{instance.instance_id}"]}}',
+            ),
+        )
 
         CfnOutput(self, "AtlantisUrl", value=f"http://{eip.ref}:4141")
         CfnOutput(self, "WebhookUrl", value=f"http://{eip.ref}:4141/events")
