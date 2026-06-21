@@ -97,5 +97,5 @@ class RdsStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,
             publicly_accessible=False,
             enable_performance_insights=False,
-            monitoring_interval=Duration.seconds(6000),
+            monitoring_interval=Duration.seconds(60000),
         )
