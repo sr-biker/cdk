@@ -4,12 +4,11 @@ projects:
     dir: .
     workflow: aws-cdk
     autoplan:
-      file_extensions:
-        - .py
       when_modified:
         - "stacks/**/*.py"
         - "app.py"
         - "requirements.txt"
+      enabled: true
 
 workflows:
   aws-cdk:
