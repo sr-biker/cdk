@@ -99,7 +99,7 @@ class RdsStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,
             publicly_accessible=False,
             enable_performance_insights=False,
-            monitoring_interval=Duration.seconds(0),
+            monitoring_interval=Duration.seconds(15),
         )
 
         db_arn = f"arn:aws:rds:{self.region}:{self.account}:db:{self.db_instance.instance_identifier}"
